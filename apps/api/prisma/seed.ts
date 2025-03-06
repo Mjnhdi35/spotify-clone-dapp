@@ -1,203 +1,214 @@
 import { faker } from '@faker-js/faker'
 import {
-  MarketStatus,
   PrismaClient,
-  StatusRule,
-  TransactionType,
+  MarketStatus,
+  NFTStatus,
+  TransactionStatus,
+  RoyaltyStatus,
 } from '@prisma/client'
+import { Decimal } from '@prisma/client/runtime/library'
 
 const prisma = new PrismaClient()
 
 async function main() {
-  try {
-    // 1. Xóa toàn bộ data cũ theo đúng thứ tự quan hệ
-    await prisma.listeningHistory.deleteMany()
-    await prisma.favorite.deleteMany()
-    await prisma.reward.deleteMany()
-    await prisma.royalty.deleteMany()
-    await prisma.transaction.deleteMany()
-    await prisma.song.deleteMany()
-    await prisma.artist.deleteMany()
-    await prisma.person.deleteMany()
+  // Clear existing data
+  await prisma.reward.deleteMany()
+  await prisma.artistRoyalty.deleteMany()
+  await prisma.transaction.deleteMany()
+  await prisma.playHistory.deleteMany()
+  await prisma.songNFT.deleteMany()
+  await prisma.artist.deleteMany()
+  await prisma.seller.deleteMany()
+  await prisma.buyer.deleteMany()
+  await prisma.user.deleteMany()
 
-    // 2. Tạo Person (5 ARTIST đầu, 5 LISTENER sau)
-    const users = await Promise.all(
-      Array.from({ length: 10 }, (_, i) => {
-        const role = i < 5 ? 'ARTIST' : 'LISTENER'
-        return prisma.person.create({
-          data: {
-            name: faker.person.fullName(),
-            dob: faker.date.birthdate({ min: 18, max: 65, mode: 'age' }),
-            nationality: faker.location.country(),
-            walletAddress: faker.finance.ethereumAddress(),
-            balance: BigInt(faker.number.int({ min: 1000, max: 100000 })),
-            role,
-            avatar: faker.image.avatar(),
-          },
-        })
-      }),
-    )
-
-    // 3. Tạo Artist từ 5 user đầu
-    const artists = await Promise.all(
-      users.slice(0, 5).map((user) =>
-        prisma.artist.create({
-          data: {
-            personId: user.id,
-            biography: faker.lorem.paragraph(),
-            totalEarnings: BigInt(
-              faker.number.int({ min: 10000, max: 1000000 }),
-            ),
-          },
-        }),
-      ),
-    )
-
-    // 4. Tạo Song với owner ngẫu nhiên
-    const songs = await Promise.all(
-      Array.from({ length: 20 }, (_, i) => {
-        const artist = artists[i % 5]
-        const owner = users[faker.number.int({ min: 0, max: 9 })]
-
-        return prisma.song.create({
-          data: {
-            name: faker.music.songName(),
-            description: faker.lorem.sentence(),
-            poster: faker.image.url(),
-            releaseDate: faker.date.past({ years: 2 }),
-            duration: faker.number.int({ min: 120, max: 300 }),
-            totalViewReplay: BigInt(
-              faker.number.int({ min: 1000, max: 100000 }),
-            ),
-            nftSongAddress: faker.finance.ethereumAddress(),
-            nftPrice: BigInt(faker.number.int({ min: 1, max: 100 })),
-            mintedQuantity: faker.number.int({ min: 100, max: 1000 }),
-            maxSupply: faker.number.int({ min: 1000, max: 5000 }),
-            currentSupply: faker.number.int({ min: 0, max: 100 }),
-            statusRule: faker.helpers.arrayElement([
-              StatusRule.PUBLIC,
-              StatusRule.PRIVATE,
-            ]),
-            marketStatus: faker.helpers.arrayElement([
-              MarketStatus.SELLING,
-              MarketStatus.SOLD,
-            ]),
-            artistId: artist.id,
-            ownerAddress: owner.walletAddress,
-          },
-        })
-      }),
-    )
-
-    // 5. Tạo Transaction
-    const transactions = await Promise.all(
-      Array.from({ length: 30 }, (_, i) => {
-        const fromUser = users[faker.number.int({ min: 0, max: 4 })] // Artist
-        const toUser = users[faker.number.int({ min: 5, max: 9 })] // Listener
-
-        return prisma.transaction.create({
-          data: {
-            txHash: faker.string.uuid(),
-            price: BigInt(faker.number.int({ min: 1, max: 100 })),
-            type: TransactionType.SALE,
-            songId: songs[i % 20].id,
-            fromAddress: fromUser.walletAddress,
-            toAddress: toUser.walletAddress,
-          },
-        })
-      }),
-    )
-
-    // 6. Tạo Royalty
-    await Promise.all(
-      songs.map((song) =>
-        prisma.royalty.create({
-          data: {
-            percentage: faker.number.float({
-              min: 0.01,
-              max: 0.1,
-              fractionDigits: 2,
-            }),
-            totalEarned: BigInt(faker.number.int({ min: 100, max: 10000 })),
-            songId: song.id,
-            artistId: song.artistId,
-          },
-        }),
-      ),
-    )
-
-    // 7. Tạo Reward với unique check
-    const rewards = []
-    const rewardKeys = new Set<string>()
-
-    while (rewards.length < 50) {
-      const song = faker.helpers.arrayElement(songs)
-      const listener = faker.helpers.arrayElement(users.slice(5))
-      const key = `${song.id}-${listener.id}`
-
-      if (!rewardKeys.has(key)) {
-        rewards.push(
-          prisma.reward.create({
-            data: {
-              amount: BigInt(faker.number.int({ min: 1, max: 100 })),
-              isClaimed: faker.datatype.boolean(),
-              songId: song.id,
-              listenerId: listener.id,
-            },
-          }),
-        )
-        rewardKeys.add(key)
-      }
-    }
-    await Promise.all(rewards)
-
-    // 8. Tạo Favorite với unique check
-    const favorites = []
-    const favoriteKeys = new Set<string>()
-
-    while (favorites.length < 30) {
-      const song = faker.helpers.arrayElement(songs)
-      const listener = faker.helpers.arrayElement(users.slice(5))
-      const key = `${song.id}-${listener.id}`
-
-      if (!favoriteKeys.has(key)) {
-        favorites.push(
-          prisma.favorite.create({
-            data: {
-              songId: song.id,
-              listenerId: listener.id,
-            },
-          }),
-        )
-        favoriteKeys.add(key)
-      }
-    }
-    await Promise.all(favorites)
-
-    // 9. Tạo ListeningHistory
-    const histories = Array.from({ length: 100 }, () => {
-      const song = faker.helpers.arrayElement(songs)
-      const listener = faker.helpers.arrayElement(users.slice(5))
-
-      return prisma.listeningHistory.create({
+  // Create Users
+  const users = await Promise.all(
+    Array.from({ length: 10 }).map(() =>
+      prisma.user.create({
         data: {
-          durationListened: faker.number.int({ min: 10, max: song.duration }),
-          completed: faker.datatype.boolean(),
-          rewardEarned: BigInt(faker.number.int({ min: 1, max: 10 })),
-          songId: song.id,
-          listenerId: listener.id,
+          id: faker.string.uuid(),
+          walletAddress: faker.finance.ethereumAddress(),
+          email: faker.internet.email(),
+        },
+      }),
+    ),
+  )
+
+  // Create Buyers and Sellers
+  const buyers = await Promise.all(
+    users.map((user) =>
+      prisma.buyer.create({
+        data: {
+          balance: new Decimal(faker.finance.amount({ min: 100, max: 1000 })),
+          rewards: new Decimal(faker.finance.amount({ min: 0, max: 100 })),
+          user: {
+            connectOrCreate: {
+              where: { id: user.id },
+              create: {
+                id: user.id,
+                walletAddress: user.walletAddress,
+                email: user.email,
+              },
+            },
+          },
+        },
+      }),
+    ),
+  )
+
+  const sellers = await Promise.all(
+    users.slice(0, 5).map((user) =>
+      prisma.seller.create({
+        data: {
+          balance: new Decimal(faker.finance.amount({ min: 1000, max: 5000 })),
+          totalSales: new Decimal(0),
+          user: {
+            connectOrCreate: {
+              where: { id: user.id },
+              create: {
+                id: user.id,
+                walletAddress: user.walletAddress,
+                email: user.email,
+              },
+            },
+          },
+        },
+      }),
+    ),
+  )
+
+  // Create Artists
+  const artists = await Promise.all(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    sellers.map((seller) =>
+      prisma.artist.create({
+        data: {
+          name: faker.person.fullName(),
+          bio: faker.lorem.paragraph(),
+          walletAddress: faker.finance.ethereumAddress(),
+        },
+      }),
+    ),
+  )
+
+  // Create SongNFTs
+  const songNFTs = await Promise.all(
+    Array.from({ length: 20 }).map((_, i) =>
+      prisma.songNFT.create({
+        data: {
+          id: faker.string.uuid(),
+          title: faker.music.songName(),
+          duration: faker.number.int({ min: 120, max: 300 }),
+          poster: faker.image.url(),
+          marketStatus: faker.helpers.arrayElement([
+            MarketStatus.SELLING,
+            MarketStatus.SOLD,
+          ]),
+          status: faker.helpers.arrayElement([
+            NFTStatus.PUBLIC,
+            NFTStatus.PRIVATE,
+          ]),
+          royaltyPercentage: new Decimal(
+            faker.number.float({ min: 0.05, max: 0.2 }),
+          ),
+          price: new Decimal(faker.finance.amount({ min: 1, max: 10 })),
+          releaseDate: faker.date.past(),
+          nftAddress: faker.finance.ethereumAddress(),
+          musicUrl: faker.internet.url(),
+          artistId: artists[i % 5].id,
+          sellerId: sellers[i % 5].id,
+        },
+      }),
+    ),
+  )
+
+  // Create Transactions and ArtistRoyalties
+  for (const songNFT of songNFTs) {
+    const buyer = faker.helpers.arrayElement(buyers)
+    const transaction = await prisma.transaction.create({
+      data: {
+        txHash: faker.string.uuid(),
+        amount: songNFT.price,
+        status: faker.helpers.arrayElement([
+          TransactionStatus.PENDING,
+          TransactionStatus.COMPLETED,
+          TransactionStatus.FAILED,
+        ]),
+        nftId: songNFT.id,
+        buyerId: buyer.id,
+        sellerId: songNFT.sellerId,
+      },
+    })
+
+    await prisma.artistRoyalty.create({
+      data: {
+        amount: songNFT.price.times(songNFT.royaltyPercentage),
+        status: faker.helpers.arrayElement([
+          RoyaltyStatus.PENDING,
+          RoyaltyStatus.PAID,
+          RoyaltyStatus.FAILED,
+        ]),
+        artistId: songNFT.artistId,
+        transactionId: transaction.id,
+        nftId: songNFT.id,
+      },
+    })
+
+    await prisma.seller.update({
+      where: { id: songNFT.sellerId },
+      data: {
+        totalSales: { increment: songNFT.price },
+        balance: { increment: songNFT.price },
+      },
+    })
+
+    await prisma.artist.update({
+      where: { id: songNFT.artistId },
+      data: {
+        totalEarnings: {
+          increment: songNFT.price.times(songNFT.royaltyPercentage),
+        },
+      },
+    })
+  }
+
+  // Create PlayHistories and Rewards
+  for (let i = 0; i < 100; i++) {
+    const buyer = faker.helpers.arrayElement(buyers)
+    const songNFT = faker.helpers.arrayElement(songNFTs)
+    const durationPlayed = faker.number.int({
+      min: 30,
+      max: songNFT.duration + 60,
+    })
+
+    await prisma.playHistory.create({
+      data: {
+        durationPlayed,
+        buyerId: buyer.id,
+        nftId: songNFT.id,
+      },
+    })
+
+    if (durationPlayed >= songNFT.duration) {
+      await prisma.reward.create({
+        data: {
+          amount: new Decimal(faker.finance.amount({ min: 1, max: 10 })),
+          buyerId: buyer.id,
+          nftId: songNFT.id,
         },
       })
-    })
-    await Promise.all(histories)
-
-    console.log('✅ Seed data created successfully!')
-  } catch (error) {
-    console.error('❌ Error seeding data:', error)
-    process.exit(1)
-  } finally {
-    await prisma.$disconnect()
+    }
   }
+
+  console.log('✅ Seed data thành công!')
 }
 
 main()
+  .catch((e) => {
+    console.error('❌ Lỗi seed data:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })

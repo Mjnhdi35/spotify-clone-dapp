@@ -14,161 +14,164 @@ datasource db {
 }
  
  
+enum NFTStatus {
+  PUBLIC
+  PRIVATE
+}
 
 enum MarketStatus {
   SELLING
   SOLD
 }
 
-enum StatusRule {
-  PUBLIC
-  PRIVATE
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
-enum Role {
-  ARTIST
-  LISTENER
+enum RoyaltyStatus {
+  PENDING
+  PAID
+  FAILED
 }
 
-enum TransactionType {
-  MINT
-  TRANSFER
-  SALE
+model User {
+  id            String    @id @unique
+  walletAddress String    @unique
+  email         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  buyer  Buyer?
+  seller Seller?
 }
 
-model Song {
-  id              Int             @id @default(autoincrement())
-  name            String
-  description     String?
-  poster String?
-  releaseDate     DateTime?
-  duration        Int             @default(0)
-  totalViewReplay BigInt           @default(0)
-  nftSongAddress  String          @unique
-  nftPrice        BigInt          @default(0)
-  mintedQuantity  Int
-  maxSupply       Int
-  currentSupply   Int             @default(0)
-  statusRule      StatusRule      @default(PUBLIC)
-  marketStatus    MarketStatus    @default(SELLING)
+model Buyer {
+  id            String        @id @unique
+  balance       Decimal       @default(0)
+  rewards       Decimal       @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
- 
-  artist          Artist          @relation(fields: [artistId], references: [id])
-  artistId        Int
-  owner           Person?         @relation(fields: [ownerAddress], references: [walletAddress], name: "NFT_Owner")
-  ownerAddress    String?
-
-  transactions    Transaction[]
-  royalties       Royalty[]
-  rewards         Reward[]
-  listeningHistories ListeningHistory[]
-  favorites       Favorite[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user          User          @relation(fields: [id], references: [id])
+  playHistories PlayHistory[]
+  rewardsList   Reward[]
+  purchases     Transaction[] @relation("BuyerTransactions")
 }
 
-model Person {
-  id              Int             @id @default(autoincrement())
-  name            String
-  dob             DateTime?
-  nationality     String?
-  walletAddress   String          @unique
-  balance         BigInt          @default(0)
-  claimedRewards  BigInt          @default(0)
-  role            Role            @default(LISTENER)
-  avatar String?
- 
-  artistProfile   Artist?
-  ownedNFTs       Song[]          @relation("NFT_Owner")
-  rewards         Reward[]
-  favorites       Favorite[]
-  sentTransactions Transaction[]  @relation("SentTransactions")
-  receivedTransactions Transaction[] @relation("ReceivedTransactions")
-  listeningHistories ListeningHistory[]
+model Seller {
+  id         String        @id @unique
+  balance    Decimal       @default(0)
+  totalSales Decimal       @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user     User        @relation(fields: [id], references: [id])
+  songNFTs SongNFT[]
+  sales    Transaction[] @relation("SellerTransactions")
 }
 
 model Artist {
-  id              Int             @id @default(autoincrement())
-  biography       String?
-  totalEarnings   BigInt          @default(0)
+  id            Int             @id @default(autoincrement())
+  name          String
+  bio           String?
+  walletAddress String          @unique
+  totalEarnings Decimal         @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
-  // Fixed relation
-  person          Person          @relation(fields: [personId], references: [id])
-  personId        Int             @unique
-  songs           Song[]
-  royalties       Royalty[]
+  songNFTs  SongNFT[]
+  royalties ArtistRoyalty[]
+}
+
+model SongNFT {
+  id                String          @id @unique
+  title             String
+  duration          Int
+  poster            String?
+  marketStatus      MarketStatus    @default(SELLING)
+  status            NFTStatus       @default(PUBLIC)
+  royaltyPercentage Decimal         @default(0.1)
+  price             Decimal
+  releaseDate       DateTime?
+  nftAddress        String          @unique
+  musicUrl          String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  artistId      Int             
+  artist        Artist          @relation(fields: [artistId], references: [id])
+  sellerId      String          
+  seller        Seller          @relation(fields: [sellerId], references: [id])
+
+  transactions  Transaction[]
+  royalties     ArtistRoyalty[]
+  playHistories PlayHistory[]
+  rewards       Reward[]
 }
 
 model Transaction {
-  id              String          @id @default(uuid())
-  txHash          String          @unique
-  price           BigInt
-  type            TransactionType
+  id              Int               @id @default(autoincrement())
+  txHash          String            @unique
+  amount          Decimal
+  status          TransactionStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
+  blockNumber     Int?
+  gasUsed         Decimal?
+  contractAddress String?
 
-  song            Song            @relation(fields: [songId], references: [id])
-  songId          Int
-  from            Person?         @relation(name: "SentTransactions", fields: [fromAddress], references: [walletAddress])
-  fromAddress     String?
-  to              Person          @relation(name: "ReceivedTransactions", fields: [toAddress], references: [walletAddress])
-  toAddress       String
+  nftId         String          
+  nft           SongNFT         @relation(fields: [nftId], references: [id])
 
-  createdAt DateTime @default(now())
+  buyerId       String          
+  buyer         Buyer           @relation("BuyerTransactions", fields: [buyerId], references: [id])
+
+  sellerId      String          
+  seller        Seller          @relation("SellerTransactions", fields: [sellerId], references: [id])
+
+  royalties     ArtistRoyalty[]
 }
 
-model Royalty {
-  id              Int             @id @default(autoincrement())
-  percentage      Decimal
-  totalEarned     BigInt          @default(0)
+model ArtistRoyalty {
+  id            Int           @id @default(autoincrement())
+  amount        Decimal
+  status        RoyaltyStatus @default(PENDING)
+  paymentTxHash String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
 
-  song            Song            @relation(fields: [songId], references: [id])
-  songId          Int
-  artist          Artist          @relation(fields: [artistId], references: [id])
-  artistId        Int
+  artistId      Int           
+  artist        Artist        @relation(fields: [artistId], references: [id])
+  transactionId Int           
+  transaction   Transaction   @relation(fields: [transactionId], references: [id])
+  nftId         String        
+  nft           SongNFT       @relation(fields: [nftId], references: [id])
+
+  @@index([status])
+  @@index([artistId])
+  @@index([transactionId])
+}
+
+model PlayHistory {
+  id             Int      @id @default(autoincrement())
+  durationPlayed Int
+  playedAt       DateTime @default(now())
+
+  buyerId String 
+  buyer   Buyer  @relation(fields: [buyerId], references: [id])
+  nftId   String 
+  nft     SongNFT @relation(fields: [nftId], references: [id])
 }
 
 model Reward {
-  id              Int             @id @default(autoincrement())
-  amount          BigInt
-  isClaimed       Boolean         @default(false)
-
-  song            Song            @relation(fields: [songId], references: [id])
-  songId          Int
-  listener        Person          @relation(fields: [listenerId], references: [id])
-  listenerId      Int
-
+  id        Int     @id @default(autoincrement())
+  amount    Decimal
+  claimed   Boolean @default(false)
   createdAt DateTime @default(now())
-}
 
-model Favorite {
-  id              Int             @id @default(autoincrement())
-  
-  song            Song            @relation(fields: [songId], references: [id])
-  songId          Int
-  listener        Person          @relation(fields: [listenerId], references: [id])
-  listenerId      Int
-
-  @@unique([songId, listenerId])
-  @@index([songId])
-  @@index([listenerId])
-}
-
-model ListeningHistory {
-  id              Int             @id @default(autoincrement())
-  durationListened Int           @default(0)
-  completed       Boolean        @default(false)
-  rewardEarned    BigInt?
-
-  song            Song           @relation(fields: [songId], references: [id])
-  songId          Int
-  listener        Person         @relation(fields: [listenerId], references: [id])
-  listenerId      Int
-
-  @@index([songId])
-  @@index([listenerId])
-  @@index([completed])
-  createdAt DateTime @default(now())
+  buyerId String 
+  buyer   Buyer  @relation(fields: [buyerId], references: [id])
+  nftId   String 
+  nft     SongNFT @relation(fields: [nftId], references: [id])
 }

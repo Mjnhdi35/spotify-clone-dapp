@@ -1,0 +1,24 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type Artist {
+  id: ID!
+  name: String!
+  dob: Timestamp
+  nationality: String
+  address: String!
+  balance: Float
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
+
+"""
+`Date` type as integer. Type represents date and time as number of milliseconds from start of UNIX epoch.
+"""
+scalar Timestamp
+
+type Query {
+  artists: [Artist!]!
+  artist(id: Int!): Artist!
+}
