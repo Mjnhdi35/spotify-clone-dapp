@@ -1,0 +1,15 @@
+services:
+  db:
+    container_name: spotify_clone_dapp_db
+    image: postgres
+    restart: always
+    ports:
+      - 2025:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - db_data_spotify_clone_dapp:/var/lib/postgresql/data
+volumes:
+  db_data_spotify_clone_dapp:

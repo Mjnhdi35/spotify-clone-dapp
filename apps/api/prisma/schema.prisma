@@ -1,0 +1,174 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+ 
+ 
+
+enum MarketStatus {
+  SELLING
+  SOLD
+}
+
+enum StatusRule {
+  PUBLIC
+  PRIVATE
+}
+
+enum Role {
+  ARTIST
+  LISTENER
+}
+
+enum TransactionType {
+  MINT
+  TRANSFER
+  SALE
+}
+
+model Song {
+  id              Int             @id @default(autoincrement())
+  name            String
+  description     String?
+  poster String?
+  releaseDate     DateTime?
+  duration        Int             @default(0)
+  totalViewReplay BigInt           @default(0)
+  nftSongAddress  String          @unique
+  nftPrice        BigInt          @default(0)
+  mintedQuantity  Int
+  maxSupply       Int
+  currentSupply   Int             @default(0)
+  statusRule      StatusRule      @default(PUBLIC)
+  marketStatus    MarketStatus    @default(SELLING)
+
+ 
+  artist          Artist          @relation(fields: [artistId], references: [id])
+  artistId        Int
+  owner           Person?         @relation(fields: [ownerAddress], references: [walletAddress], name: "NFT_Owner")
+  ownerAddress    String?
+
+  transactions    Transaction[]
+  royalties       Royalty[]
+  rewards         Reward[]
+  listeningHistories ListeningHistory[]
+  favorites       Favorite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Person {
+  id              Int             @id @default(autoincrement())
+  name            String
+  dob             DateTime?
+  nationality     String?
+  walletAddress   String          @unique
+  balance         BigInt          @default(0)
+  claimedRewards  BigInt          @default(0)
+  role            Role            @default(LISTENER)
+  avatar String?
+ 
+  artistProfile   Artist?
+  ownedNFTs       Song[]          @relation("NFT_Owner")
+  rewards         Reward[]
+  favorites       Favorite[]
+  sentTransactions Transaction[]  @relation("SentTransactions")
+  receivedTransactions Transaction[] @relation("ReceivedTransactions")
+  listeningHistories ListeningHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Artist {
+  id              Int             @id @default(autoincrement())
+  biography       String?
+  totalEarnings   BigInt          @default(0)
+
+  // Fixed relation
+  person          Person          @relation(fields: [personId], references: [id])
+  personId        Int             @unique
+  songs           Song[]
+  royalties       Royalty[]
+}
+
+model Transaction {
+  id              String          @id @default(uuid())
+  txHash          String          @unique
+  price           BigInt
+  type            TransactionType
+
+  song            Song            @relation(fields: [songId], references: [id])
+  songId          Int
+  from            Person?         @relation(name: "SentTransactions", fields: [fromAddress], references: [walletAddress])
+  fromAddress     String?
+  to              Person          @relation(name: "ReceivedTransactions", fields: [toAddress], references: [walletAddress])
+  toAddress       String
+
+  createdAt DateTime @default(now())
+}
+
+model Royalty {
+  id              Int             @id @default(autoincrement())
+  percentage      Decimal
+  totalEarned     BigInt          @default(0)
+
+  song            Song            @relation(fields: [songId], references: [id])
+  songId          Int
+  artist          Artist          @relation(fields: [artistId], references: [id])
+  artistId        Int
+}
+
+model Reward {
+  id              Int             @id @default(autoincrement())
+  amount          BigInt
+  isClaimed       Boolean         @default(false)
+
+  song            Song            @relation(fields: [songId], references: [id])
+  songId          Int
+  listener        Person          @relation(fields: [listenerId], references: [id])
+  listenerId      Int
+
+  createdAt DateTime @default(now())
+}
+
+model Favorite {
+  id              Int             @id @default(autoincrement())
+  
+  song            Song            @relation(fields: [songId], references: [id])
+  songId          Int
+  listener        Person          @relation(fields: [listenerId], references: [id])
+  listenerId      Int
+
+  @@unique([songId, listenerId])
+  @@index([songId])
+  @@index([listenerId])
+}
+
+model ListeningHistory {
+  id              Int             @id @default(autoincrement())
+  durationListened Int           @default(0)
+  completed       Boolean        @default(false)
+  rewardEarned    BigInt?
+
+  song            Song           @relation(fields: [songId], references: [id])
+  songId          Int
+  listener        Person         @relation(fields: [listenerId], references: [id])
+  listenerId      Int
+
+  @@index([songId])
+  @@index([listenerId])
+  @@index([completed])
+  createdAt DateTime @default(now())
+}
